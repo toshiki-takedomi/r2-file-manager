@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "r2-file-manager"
+version = "0.1.0"
+description = "A local Cloudflare R2 file manager with multipart uploads."
+requires-python = ">=3.11"
+dependencies = [
+  "boto3>=1.40,<2",
+  "Flask>=3.1,<4",
+  "keyring>=25,<27",
+  "waitress>=3.0,<4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+
+[project.scripts]
+r2-file-manager = "r2_file_manager.__main__:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["r2_file_manager*"]
+
+[tool.setuptools.package-data]
+r2_file_manager = ["templates/*.html", "static/*.css", "static/*.js"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+

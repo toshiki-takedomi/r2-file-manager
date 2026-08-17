@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="r2fm-token" content="{{ api_token }}">
+  <title>R2 File Manager</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <div class="brand-mark">R2</div>
+      <div>
+        <strong>R2 File Manager</strong>
+        <span id="connection-name">未接続</span>
+      </div>
+    </div>
+    <button id="settings-button" class="icon-button" title="接続設定" aria-label="接続設定">⚙</button>
+  </header>
+
+  <main>
+    <section id="bucket-view" class="page">
+      <div class="page-heading">
+        <div>
+          <p class="eyebrow">Cloudflare R2</p>
+          <h1>バケット</h1>
+          <p class="subtitle">オブジェクトを保存するバケットを管理します。</p>
+        </div>
+        <div class="actions">
+          <button id="refresh-buckets" class="secondary-button" title="更新">↻</button>
+          <button id="create-bucket-button" class="primary-button">＋ バケットを作成</button>
+        </div>
+      </div>
+      <div id="usage-panel" class="usage-panel">
+        <div class="usage-card">
+          <span>合計ストレージ</span>
+          <strong id="usage-storage">--</strong>
+          <small id="usage-storage-detail">Cloudflareから取得中</small>
+        </div>
+        <div class="usage-card">
+          <span>オブジェクト</span>
+          <strong id="usage-objects">--</strong>
+          <small>アカウント全体</small>
+        </div>
+        <div class="usage-card">
+          <span>アップロード中</span>
+          <strong id="usage-uploading">--</strong>
+          <small>未完了パートを含む</small>
+        </div>
+        <div id="usage-unavailable" class="usage-card usage-unavailable hidden">
+          <span>使用量メトリクス</span>
+          <strong>API Tokenが必要です</strong>
+          <button id="configure-metrics" class="link-button">接続設定を開く</button>
+        </div>
+      </div>
+      <div class="table-card">
+        <table>
+          <thead><tr><th>バケット名</th><th>作成日時</th><th class="menu-column"></th></tr></thead>
+          <tbody id="bucket-rows"></tbody>
+        </table>
+        <div id="bucket-empty" class="empty-state hidden">
+          <div class="empty-icon">▱</div>
+          <h2>バケットがありません</h2>
+          <p>最初のバケットを作成してファイルをアップロードしましょう。</p>
+          <button class="primary-button create-bucket-shortcut">＋ バケットを作成</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="object-view" class="page hidden">
+      <div class="object-toolbar">
+        <nav id="breadcrumbs" class="breadcrumbs" aria-label="現在の場所"></nav>
+        <div class="actions">
+          <button id="delete-selected" class="danger-secondary hidden">選択項目を削除</button>
+          <button id="refresh-objects" class="secondary-button" title="更新">↻</button>
+          <button id="upload-button" class="primary-button">⇧ アップロード</button>
+        </div>
+      </div>
+      <div id="drop-zone" class="table-card object-card">
+        <table>
+          <thead>
+            <tr>
+              <th class="check-column"><input id="select-all" type="checkbox" aria-label="すべて選択"></th>
+              <th>オブジェクト</th><th>タイプ</th><th>ストレージクラス</th><th>サイズ</th><th>変更日時</th><th class="menu-column"></th>
+            </tr>
+          </thead>
+          <tbody id="object-rows"></tbody>
+        </table>
+        <div id="object-empty" class="empty-state hidden">
+          <div class="empty-icon">⇧</div>
+          <h2>ファイルがありません</h2>
+          <p>ここへファイルをドラッグ＆ドロップするか、アップロードを選択してください。</p>
+        </div>
+        <button id="load-more" class="load-more hidden">さらに読み込む</button>
+        <div id="drop-overlay" class="drop-overlay hidden">ここにドロップしてアップロード</div>
+      </div>
+      <p class="drop-hint">⇧ ファイルをドラッグ＆ドロップしてアップロードできます</p>
+    </section>
+  </main>
+
+  <aside id="transfer-center" class="transfer-center hidden" aria-live="polite">
+    <div class="transfer-header">
+      <strong>アップロード</strong>
+      <button id="toggle-transfers" class="plain-icon" aria-label="折りたたむ">−</button>
+    </div>
+    <div id="transfer-list" class="transfer-list"></div>
+  </aside>
+
+  <dialog id="settings-dialog" class="modal settings-modal">
+    <form id="settings-form" method="dialog">
+      <div class="modal-header"><div><p class="eyebrow">接続</p><h2>接続設定</h2></div><button type="button" class="modal-close" aria-label="閉じる">×</button></div>
+      <div class="form-grid">
+        <label>接続名<input name="name" autocomplete="off" placeholder="Personal R2" required></label>
+        <label>Account ID<input name="account_id" autocomplete="off" maxlength="32" required><small>Cloudflareダッシュボードに表示される32文字のID</small></label>
+        <label>Access Key ID<input name="access_key_id" autocomplete="off" required></label>
+        <label><span class="credential-label"><span>Secret Access Key</span><span id="secret-badge" class="status-badge">未設定</span></span>
+          <div class="password-row"><input name="secret_access_key" type="password" autocomplete="new-password"><button id="toggle-secret" type="button" class="secondary-button">表示</button></div>
+          <small id="secret-status">未設定</small>
+        </label>
+        <label><span class="credential-label"><span>Cloudflare API Token <span class="optional">使用量表示用・任意</span></span><span id="metrics-token-badge" class="status-badge">未設定</span></span>
+          <div class="password-row"><input name="cloudflare_api_token" type="password" autocomplete="new-password"><button id="toggle-api-token" type="button" class="secondary-button">表示</button></div>
+          <small id="metrics-token-status">AccountのR2読み取り権限を持つAPI Tokenを指定してください。</small>
+        </label>
+        <label>Public URL <span class="optional">任意</span><input name="public_url" type="url" autocomplete="off" placeholder="https://pub-xxxx.r2.dev"></label>
+      </div>
+      <div id="settings-message" class="inline-message hidden"></div>
+      <div class="modal-footer split-footer">
+        <button id="load-environment" type="button" class="link-button">環境変数から再読込</button>
+        <div class="actions"><button id="test-settings" type="button" class="secondary-button">接続テスト</button><button id="save-settings" type="button" class="primary-button">保存して接続</button></div>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="upload-dialog" class="modal upload-modal">
+    <form id="upload-form" method="dialog">
+      <div class="modal-header"><div><p class="eyebrow">UPLOAD</p><h2>ファイルをアップロード</h2></div><button type="button" class="modal-close" aria-label="閉じる">×</button></div>
+      <label>R2上の保存先
+        <div class="destination-row"><span id="upload-bucket-name">bucket</span><span>/</span><input id="upload-path" name="path" autocomplete="off" placeholder="models/checkpoints/"></div>
+        <small>空欄の場合はバケット直下へ保存します。先頭の / は不要です。</small>
+      </label>
+      <div id="upload-drop-area" class="upload-drop-area" tabindex="0" role="button" aria-label="アップロードするファイルを追加">
+        <div class="upload-drop-icon">⇧</div>
+        <strong>ファイルをドラッグ＆ドロップ</strong>
+        <span>または</span>
+        <button id="choose-upload-files" type="button" class="secondary-button">ファイルを選択</button>
+        <input id="file-input" type="file" multiple hidden>
+      </div>
+      <div class="candidate-heading">
+        <strong>候補ファイル</strong>
+        <span id="candidate-summary">0件</span>
+      </div>
+      <div id="upload-candidates" class="upload-candidates">
+        <div class="candidate-empty">ファイルが追加されていません。</div>
+      </div>
+      <div id="upload-message" class="inline-message hidden"></div>
+      <div class="modal-footer split-footer">
+        <button id="clear-upload-files" type="button" class="link-button" disabled>すべて削除</button>
+        <div class="actions"><button type="button" class="secondary-button modal-close">キャンセル</button><button id="start-upload" type="submit" class="primary-button" disabled>アップロード開始</button></div>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="bucket-dialog" class="modal small-modal">
+    <form id="bucket-form" method="dialog">
+      <div class="modal-header"><div><p class="eyebrow">新規</p><h2>バケットを作成</h2></div><button type="button" class="modal-close" aria-label="閉じる">×</button></div>
+      <label>バケット名<input name="name" pattern="[a-z0-9][a-z0-9-]{1,61}[a-z0-9]" minlength="3" maxlength="63" placeholder="my-bucket" required><small>3～63文字の小文字、数字、ハイフン</small></label>
+      <div id="bucket-message" class="inline-message hidden"></div>
+      <div class="modal-footer actions"><button type="button" class="secondary-button modal-close">キャンセル</button><button type="submit" class="primary-button">作成</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="confirm-dialog" class="modal small-modal">
+    <form method="dialog">
+      <div class="modal-header"><h2 id="confirm-title">確認</h2></div>
+      <p id="confirm-text" class="confirm-text"></p>
+      <div class="modal-footer actions"><button value="cancel" class="secondary-button">キャンセル</button><button value="confirm" id="confirm-action" class="danger-button">削除</button></div>
+    </form>
+  </dialog>
+
+  <div id="toast-region" class="toast-region" aria-live="polite"></div>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

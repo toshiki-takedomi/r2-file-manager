@@ -1,0 +1,101 @@
+from __future__ import annotations
+
+import re
+
+from r2_file_manager.app import create_app
+from r2_file_manager.config import ConfigStore
+
+
+class MemorySecrets:
+    def __init__(self):
+        self.values = {}
+
+    def get(self, profile_id):
+        return self.values.get(profile_id)
+
+    def set(self, profile_id, secret):
+        self.values[profile_id] = secret
+
+    def delete(self, profile_id):
+        self.values.pop(profile_id, None)
+
+
+class FakeClient:
+    def list_buckets(self, **_kwargs):
+        return {"Buckets": []}
+
+
+class FakeService:
+    last_credentials = None
+
+    def __init__(self, settings, secret):
+        self.settings = settings
+        self.secret = secret
+        self.client = FakeClient()
+        FakeService.last_credentials = (settings, secret)
+
+    def test_connection(self):
+        self.client.list_buckets()
+
+    def list_buckets(self):
+        return []
+
+
+def make_client(tmp_path):
+    store = ConfigStore(tmp_path, MemorySecrets())
+    app = create_app(config_store=store, service_factory=FakeService)
+    app.config["TESTING"] = True
+    client = app.test_client()
+    html = client.get("/").get_data(as_text=True)
+    token = re.search(r'<meta name="r2fm-token" content="([^"]+)">', html).group(1)
+    return client, store, {"X-R2FM-Token": token}
+
+
+def test_mutation_requires_request_token(tmp_path):
+    client, _store, _headers = make_client(tmp_path)
+    response = client.post("/api/settings/test", json={})
+    assert response.status_code == 403
+
+
+def test_read_api_also_requires_request_token(tmp_path):
+    client, _store, _headers = make_client(tmp_path)
+    response = client.get("/api/settings/environment")
+    assert response.status_code == 403
+
+
+def test_metrics_endpoint_is_optional(tmp_path):
+    client, store, headers = make_client(tmp_path)
+    store.save(
+        {
+            "name": "Test R2",
+            "account_id": "a" * 32,
+            "access_key_id": "access",
+            "public_url": "",
+        },
+        "secret",
+    )
+
+    response = client.get("/api/metrics", headers=headers)
+
+    assert response.status_code == 200
+    assert response.get_json() == {"configured": False}
+
+
+def test_settings_are_tested_then_saved_without_plaintext_secret(tmp_path):
+    client, store, headers = make_client(tmp_path)
+    response = client.post(
+        "/api/settings",
+        headers=headers,
+        json={
+            "name": "Test R2",
+            "account_id": "a" * 32,
+            "access_key_id": "access",
+            "secret_access_key": "secret-value",
+            "public_url": "",
+        },
+    )
+
+    assert response.status_code == 200
+    assert store.load().name == "Test R2"
+    assert "secret-value" not in store.path.read_text(encoding="utf-8")
+    assert FakeService.last_credentials[1] == "secret-value"
