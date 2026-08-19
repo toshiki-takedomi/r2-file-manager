@@ -52,7 +52,7 @@ h2 { font-size: 20px; margin-bottom: 8px; }
 .usage-unavailable .link-button { padding-bottom: 0; }
 
 .actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
-.primary-button, .secondary-button, .danger-button, .danger-secondary, .icon-button, .load-more { border-radius: 8px; min-height: 38px; padding: 0 14px; font-weight: 650; }
+.primary-button, .secondary-button, .danger-button, .danger-secondary, .icon-button, .load-more { border-radius: 8px; min-height: 38px; padding: 0 14px; font-weight: 650; white-space: nowrap; flex-shrink: 0; }
 .primary-button { border: 1px solid var(--blue); background: var(--blue); color: white; }
 .primary-button:hover { background: var(--blue-hover); }
 .secondary-button, .icon-button { border: 1px solid var(--border); background: var(--surface); color: var(--text); }
@@ -109,7 +109,7 @@ tbody tr:hover { background: #f8fbff; }
 .modal { width: min(600px, calc(100vw - 48px)); padding: 0; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
 .modal::backdrop { background: rgb(18 23 31 / 48%); backdrop-filter: blur(2px); }
 .small-modal { width: min(460px, calc(100vw - 48px)); }
-.modal form { padding: 22px; }
+.modal form { min-width: 0; padding: 22px; }
 .modal-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; }
 .modal-header h2 { margin-bottom: 0; }
 .modal-close { width: 32px; height: 32px; padding: 0; border: 0; border-radius: 6px; background: transparent; font-size: 22px; color: var(--muted); }
@@ -133,6 +133,8 @@ label small { display: block; margin-top: 5px; color: var(--muted); font-weight:
 .inline-message { margin-top: 15px; padding: 10px 12px; border-radius: 7px; background: var(--danger-soft); color: var(--danger); }
 .inline-message.success { background: #eaf8f2; color: var(--success); }
 .confirm-text { color: var(--muted); line-height: 1.7; white-space: pre-line; }
+.checkbox-label { margin-top: 16px; display: flex; align-items: center; gap: 9px; font-weight: 500; }
+.checkbox-label input { width: 17px; height: 17px; margin: 0; flex: 0 0 auto; accent-color: var(--blue); }
 
 .object-action-name { margin: -7px 0 16px; overflow-wrap: anywhere; color: var(--muted); font-size: 13px; }
 .object-action-list { display: grid; gap: 8px; }

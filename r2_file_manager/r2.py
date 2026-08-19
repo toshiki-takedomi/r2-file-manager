@@ -3,7 +3,8 @@ from __future__ import annotations
 import math
 import re
 from datetime import datetime
-from typing import Any
+from threading import Lock
+from typing import Any, Callable
 from urllib.parse import quote
 
 import boto3
@@ -154,6 +155,53 @@ class R2Service:
             ExpiresIn=expires_in,
         )
         return {"url": url, "expires_in": expires_in, "file_name": file_name}
+
+    def move_object(
+        self,
+        bucket: str,
+        source_key: str,
+        destination_key: str,
+        *,
+        overwrite: bool = False,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> dict[str, str]:
+        if not bucket or not source_key or not destination_key:
+            raise ValueError("移動元と移動先を指定してください。")
+        if source_key == destination_key:
+            raise ValueError("移動先は現在のパスと異なるパスを指定してください。")
+        if destination_key.endswith("/"):
+            raise ValueError("移動先にはファイル名まで入力してください。")
+        if len(destination_key.encode("utf-8")) > 1024:
+            raise ValueError("移動先のパスが1,024バイトを超えています。")
+        source = self.client.head_object(Bucket=bucket, Key=source_key)
+        total_size = int(source.get("ContentLength", 0))
+        if not overwrite and self.object_exists(bucket, destination_key):
+            raise ValueError("移動先に同名のファイルが存在します。上書きを許可してください。")
+
+        # boto3's managed copy automatically switches to UploadPartCopy for
+        # large objects. Delete only after the destination copy has completed.
+        copied = 0
+        progress_lock = Lock()
+
+        def report_progress(bytes_amount: int) -> None:
+            nonlocal copied
+            with progress_lock:
+                copied = max(0, min(copied + bytes_amount, total_size))
+                if progress_callback:
+                    progress_callback(copied, total_size)
+
+        if progress_callback:
+            progress_callback(0, total_size)
+        self.client.copy(
+            {"Bucket": bucket, "Key": source_key},
+            bucket,
+            destination_key,
+            Callback=report_progress,
+        )
+        if progress_callback:
+            progress_callback(total_size, total_size)
+        self.client.delete_object(Bucket=bucket, Key=source_key)
+        return {"source_key": source_key, "destination_key": destination_key}
 
     def delete_objects(self, bucket: str, keys: list[str]) -> dict[str, Any]:
         if not keys:

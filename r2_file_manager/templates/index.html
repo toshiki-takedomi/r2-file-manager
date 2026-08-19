@@ -102,7 +102,7 @@
 
   <aside id="transfer-center" class="transfer-center hidden" aria-live="polite">
     <div class="transfer-header">
-      <strong>アップロード</strong>
+      <strong>転送状況</strong>
       <button id="toggle-transfers" class="plain-icon" aria-label="折りたたむ">−</button>
     </div>
     <div id="transfer-list" class="transfer-list"></div>
@@ -177,9 +177,24 @@
       <p id="object-action-name" class="object-action-name"></p>
       <div class="object-action-list">
         <button id="download-object" type="button" class="object-action-button primary-action"><span>↓</span><span><strong>ダウンロード</strong><small>この端末にファイルを保存</small></span></button>
+        <button id="move-object" type="button" class="object-action-button"><span>↪</span><span><strong>移動</strong><small>ファイルのパスまたは名前を変更</small></span></button>
         <button id="show-download-info" type="button" class="object-action-button"><span>↓</span><span><strong>ダウンロード情報</strong><small>URLとLinux用コマンドを表示</small></span></button>
         <button id="delete-object" type="button" class="object-action-button danger-action"><span>×</span><span><strong>削除</strong><small>このファイルをR2から削除</small></span></button>
       </div>
+    </form>
+  </dialog>
+
+  <dialog id="move-dialog" class="modal small-modal">
+    <form id="move-form" method="dialog">
+      <div class="modal-header"><div><p class="eyebrow">MOVE</p><h2>ファイルを移動</h2></div><button type="button" class="modal-close" aria-label="閉じる">×</button></div>
+      <p id="move-source-key" class="object-action-name"></p>
+      <label>新しいパス
+        <input id="move-destination-key" name="destination_key" type="text" autocomplete="off" required>
+        <small>バケット内のフルパスを、ファイル名を含めて入力してください。</small>
+      </label>
+      <label class="checkbox-label"><input id="move-overwrite" name="overwrite" type="checkbox"><span>移動先に同名ファイルがある場合は上書きする</span></label>
+      <div id="move-message" class="inline-message hidden"></div>
+      <div class="modal-footer actions"><button type="button" class="secondary-button modal-close">キャンセル</button><button id="confirm-move" type="submit" class="primary-button">移動</button></div>
     </form>
   </dialog>
 

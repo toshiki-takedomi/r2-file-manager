@@ -11,6 +11,7 @@
     nextToken: null,
     selected: new Set(),
     transfers: new Map(),
+    moveJobs: new Map(),
     pendingFiles: [],
     actionObject: null,
     metricsRefreshTimers: [],
@@ -127,7 +128,7 @@
       $("#settings-dialog").showModal();
       return;
     }
-    await Promise.all([loadBuckets(), loadMetrics(), loadIncompleteUploads()]);
+    await Promise.all([loadBuckets(), loadMetrics(), loadIncompleteUploads(), loadMoveJobs()]);
   }
 
   function fillSettings(settings, secret = "", configured = false, metricsToken = "", metricsConfigured = false) {
@@ -478,6 +479,66 @@
     }
   }
 
+  function normalizeObjectKey(rawPath) {
+    let path = String(rawPath || "").trim().replaceAll("\\", "/");
+    path = path.replace(/^\/+/, "").replace(/\/{2,}/g, "/");
+    const segments = path.split("/");
+    if (!path || path.endsWith("/")) throw new Error("移動先にはファイル名まで入力してください。");
+    if (segments.some((segment) => !segment || segment === "." || segment === "..")) {
+      throw new Error("移動先のパスに空の区切り、.、.. は使用できません。");
+    }
+    if (new TextEncoder().encode(path).length > 1024) {
+      throw new Error("移動先のパスが1,024バイトを超えています。");
+    }
+    return path;
+  }
+
+  function openMoveDialog() {
+    const object = state.actionObject;
+    if (!object) return;
+    $("#object-actions-dialog").close();
+    $("#move-source-key").textContent = object.key;
+    $("#move-destination-key").value = object.key;
+    $("#move-overwrite").checked = false;
+    hideInline("#move-message");
+    $("#move-dialog").showModal();
+    $("#move-destination-key").focus();
+    $("#move-destination-key").select();
+  }
+
+  async function moveObject(event) {
+    event.preventDefault();
+    const object = state.actionObject;
+    if (!object || !state.bucket) return;
+    const button = $("#confirm-move");
+    hideInline("#move-message");
+    let destinationKey;
+    try {
+      destinationKey = normalizeObjectKey($("#move-destination-key").value);
+      if (destinationKey === object.key) throw new Error("移動先は現在のパスと異なるパスを指定してください。");
+      setBusy(button, true, "移動中…");
+      const job = await api("/api/objects/move", {
+        method: "POST",
+        data: {
+          bucket: state.bucket,
+          source_key: object.key,
+          destination_key: destinationKey,
+          overwrite: $("#move-overwrite").checked,
+        },
+      });
+      state.selected.delete(object.key);
+      updateSelectionControls();
+      $("#move-dialog").close();
+      state.actionObject = null;
+      registerMoveJob(job);
+      toast("移動を開始しました。進捗は右下の転送状況で確認できます。");
+    } catch (error) {
+      showInline("#move-message", error.message);
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
   async function deleteActionObject() {
     const object = state.actionObject;
     if (!object) return;
@@ -731,7 +792,8 @@
     const center = $("#transfer-center");
     const list = $("#transfer-list");
     const transfers = [...state.transfers.values()];
-    center.classList.toggle("hidden", transfers.length === 0);
+    const moveJobs = [...state.moveJobs.values()];
+    center.classList.toggle("hidden", transfers.length === 0 && moveJobs.length === 0);
     list.innerHTML = "";
     for (const transfer of transfers) {
       const bytes = Math.min(transferBytes(transfer), transfer.session.size);
@@ -753,6 +815,64 @@
       item.querySelector(".resume-upload")?.addEventListener("click", () => transfer.file ? uploadFile(transfer.session, transfer.file) : chooseResumeFile(transfer));
       item.querySelector(".cancel-upload")?.addEventListener("click", () => cancelUpload(transfer));
       list.append(item);
+    }
+    for (const job of moveJobs) {
+      const bytes = Math.min(job.transferred_bytes || 0, job.total_bytes || 0);
+      const percent = job.status === "complete" ? 100 : job.total_bytes > 0 ? (bytes / job.total_bytes) * 100 : 0;
+      const labels = { queued: "準備中", moving: "移動中", complete: "完了", failed: "失敗" };
+      const item = document.createElement("div");
+      item.className = "transfer-item";
+      const statusClass = job.status === "failed" ? "status-error" : job.status === "complete" ? "status-complete" : "";
+      const title = `${job.source_key} → ${job.destination_key}`;
+      const sizeText = job.total_bytes > 0
+        ? `${formatBytes(bytes)} / ${formatBytes(job.total_bytes)}（${Math.floor(percent)}%）`
+        : job.status === "complete" ? "0 B / 0 B（100%）" : "サイズを確認中";
+      item.innerHTML = `
+        <div class="transfer-title-row"><span class="transfer-name" title="${escapeHtml(title)}">移動: ${escapeHtml(job.destination_key)}</span><span class="${statusClass}">${labels[job.status] || escapeHtml(job.status)}</span></div>
+        <div class="progress-track"><div class="progress-bar" style="width:${percent.toFixed(2)}%"></div></div>
+        <div class="transfer-meta"><span>${sizeText}</span><span></span></div>
+        ${job.error ? `<div class="transfer-meta status-error">${escapeHtml(job.error)}</div>` : ""}`;
+      list.append(item);
+    }
+  }
+
+  function registerMoveJob(job) {
+    const existing = state.moveJobs.get(job.id);
+    state.moveJobs.set(job.id, { ...existing, ...job });
+    renderTransfers();
+    if (!["complete", "failed"].includes(job.status) && !existing?.polling) pollMoveJob(job.id);
+  }
+
+  async function pollMoveJob(jobId) {
+    const initial = state.moveJobs.get(jobId);
+    if (!initial) return;
+    initial.polling = true;
+    while (state.moveJobs.has(jobId)) {
+      await new Promise((resolve) => setTimeout(resolve, 750));
+      try {
+        const latest = await api(`/api/moves/${jobId}`);
+        const job = state.moveJobs.get(jobId);
+        if (!job) return;
+        Object.assign(job, latest, { polling: true });
+        renderTransfers();
+        if (latest.status === "complete") {
+          toast(`「${latest.destination_key}」へ移動しました。`);
+          if (state.bucket === latest.bucket) await loadObjects(false);
+          scheduleMetricsRefresh();
+          setTimeout(() => { state.moveJobs.delete(jobId); renderTransfers(); }, 6000);
+          return;
+        }
+        if (latest.status === "failed") {
+          toast(latest.error || "ファイルの移動に失敗しました。", "error");
+          return;
+        }
+      } catch (error) {
+        const job = state.moveJobs.get(jobId);
+        if (!job) return;
+        job.error = `進捗を取得できません: ${error.message}`;
+        renderTransfers();
+        if (error.status === 404) return;
+      }
     }
   }
 
@@ -793,6 +913,13 @@
     try {
       const { uploads } = await api("/api/uploads");
       for (const session of uploads) if (!state.transfers.has(session.id)) makeTransfer(session);
+    } catch (error) { toast(error.message, "error"); }
+  }
+
+  async function loadMoveJobs() {
+    try {
+      const { moves } = await api("/api/moves");
+      for (const job of moves) registerMoveJob(job);
     } catch (error) { toast(error.message, "error"); }
   }
 
@@ -838,6 +965,8 @@
     $("#load-more").addEventListener("click", () => loadObjects(true));
     $("#delete-selected").addEventListener("click", deleteSelected);
     $("#download-object").addEventListener("click", downloadObject);
+    $("#move-object").addEventListener("click", openMoveDialog);
+    $("#move-form").addEventListener("submit", moveObject);
     $("#show-download-info").addEventListener("click", showDownloadInfo);
     $("#delete-object").addEventListener("click", deleteActionObject);
     document.querySelectorAll(".copy-button").forEach((button) => button.addEventListener("click", () => {

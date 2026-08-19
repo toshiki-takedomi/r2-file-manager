@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import time
 
 from r2_file_manager.app import create_app
 from r2_file_manager.config import ConfigStore
@@ -27,6 +28,7 @@ class FakeClient:
 
 class FakeService:
     last_credentials = None
+    last_move = None
 
     def __init__(self, settings, secret):
         self.settings = settings
@@ -49,6 +51,15 @@ class FakeService:
             "expires_in": 300,
             "file_name": key.rsplit("/", 1)[-1],
         }
+
+    def move_object(
+        self, bucket, source_key, destination_key, *, overwrite=False, progress_callback=None
+    ):
+        FakeService.last_move = (bucket, source_key, destination_key, overwrite)
+        if progress_callback:
+            progress_callback(0, 10)
+            progress_callback(10, 10)
+        return {"source_key": source_key, "destination_key": destination_key}
 
 
 def make_client(tmp_path):
@@ -130,6 +141,49 @@ def test_download_url_endpoint(tmp_path):
         "file_name": "model.bin",
     }
     assert response.cache_control.no_store
+
+
+def test_move_object_endpoint(tmp_path):
+    client, store, headers = make_client(tmp_path)
+    store.save(
+        {"name": "Test R2", "account_id": "a" * 32, "access_key_id": "access", "public_url": ""},
+        "secret",
+    )
+
+    response = client.post(
+        "/api/objects/move",
+        headers=headers,
+        json={
+            "bucket": "models",
+            "source_key": "incoming/model.bin",
+            "destination_key": "archive/日本語.bin",
+            "overwrite": True,
+        },
+    )
+
+    assert response.status_code == 202
+    job = response.get_json()
+    assert job["source_key"] == "incoming/model.bin"
+    assert job["destination_key"] == "archive/日本語.bin"
+    assert job["status"] in {"queued", "moving", "complete"}
+
+    for _attempt in range(100):
+        progress = client.get(f"/api/moves/{job['id']}", headers=headers).get_json()
+        if progress["status"] == "complete":
+            break
+        time.sleep(0.01)
+    assert progress["status"] == "complete"
+    assert progress["transferred_bytes"] == 10
+    assert progress["total_bytes"] == 10
+
+    listed = client.get("/api/moves", headers=headers).get_json()["moves"]
+    assert any(item["id"] == job["id"] for item in listed)
+    assert FakeService.last_move == (
+        "models",
+        "incoming/model.bin",
+        "archive/日本語.bin",
+        True,
+    )
 
 
 def test_settings_are_tested_then_saved_without_plaintext_secret(tmp_path):

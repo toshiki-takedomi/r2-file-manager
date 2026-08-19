@@ -4,6 +4,7 @@ import math
 import secrets
 import shutil
 import tempfile
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -54,6 +55,23 @@ def create_app(
     store = config_store or ConfigStore(data_dir=data_dir)
     registry = UploadRegistry(store.data_dir / "uploads.json")
     api_token = secrets.token_urlsafe(32)
+    move_jobs: dict[str, dict[str, Any]] = {}
+    move_jobs_lock = threading.Lock()
+
+    def move_job_snapshot(job: dict[str, Any]) -> dict[str, Any]:
+        return {
+            key: job[key]
+            for key in (
+                "id",
+                "bucket",
+                "source_key",
+                "destination_key",
+                "status",
+                "transferred_bytes",
+                "total_bytes",
+                "error",
+            )
+        }
 
     def require_token() -> None:
         if request.headers.get("X-R2FM-Token") != api_token:
@@ -219,6 +237,83 @@ def create_app(
         response = jsonify(current_service().download_url(bucket, key))
         response.cache_control.no_store = True
         return response
+
+    @app.post("/api/objects/move")
+    def move_object():
+        values = _json()
+        bucket = str(values.get("bucket") or "")
+        source_key = str(values.get("source_key") or "")
+        destination_key = str(values.get("destination_key") or "")
+        if not bucket or not source_key or not destination_key:
+            raise ValueError("移動対象が正しくありません。")
+        service = current_service()
+        job_id = secrets.token_urlsafe(16)
+        job: dict[str, Any] = {
+            "id": job_id,
+            "bucket": bucket,
+            "source_key": source_key,
+            "destination_key": destination_key,
+            "status": "queued",
+            "transferred_bytes": 0,
+            "total_bytes": 0,
+            "error": "",
+        }
+        with move_jobs_lock:
+            for old_id in list(move_jobs):
+                if len(move_jobs) < 100:
+                    break
+                if move_jobs[old_id]["status"] in {"complete", "failed"}:
+                    del move_jobs[old_id]
+            move_jobs[job_id] = job
+
+        def update_progress(transferred: int, total: int) -> None:
+            with move_jobs_lock:
+                job["transferred_bytes"] = transferred
+                job["total_bytes"] = total
+
+        def run_move() -> None:
+            with move_jobs_lock:
+                job["status"] = "moving"
+            try:
+                service.move_object(
+                    bucket,
+                    source_key,
+                    destination_key,
+                    overwrite=values.get("overwrite") is True,
+                    progress_callback=update_progress,
+                )
+            except ValueError as exc:
+                message = str(exc)
+            except ClientError as exc:
+                message, _status = _safe_cloud_error(exc)
+            except BotoCoreError:
+                message = "R2へ接続できませんでした。ネットワーク接続を確認してください。"
+            except Exception:
+                message = "ファイルの移動に失敗しました。"
+            else:
+                with move_jobs_lock:
+                    job["status"] = "complete"
+                    job["transferred_bytes"] = job["total_bytes"]
+                return
+            with move_jobs_lock:
+                job["status"] = "failed"
+                job["error"] = message
+
+        threading.Thread(target=run_move, name=f"r2-move-{job_id}", daemon=True).start()
+        return jsonify(move_job_snapshot(job)), 202
+
+    @app.get("/api/moves")
+    def list_move_jobs():
+        with move_jobs_lock:
+            return jsonify(moves=[move_job_snapshot(job) for job in move_jobs.values()])
+
+    @app.get("/api/moves/<job_id>")
+    def get_move_job(job_id: str):
+        with move_jobs_lock:
+            job = move_jobs.get(job_id)
+            if job is None:
+                raise KeyError("移動状況が見つかりません。")
+            return jsonify(move_job_snapshot(job))
 
     @app.post("/api/objects/delete")
     def delete_objects():
