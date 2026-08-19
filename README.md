@@ -13,6 +13,27 @@ python -m r2_file_manager
 
 起動後、`http://127.0.0.1:8877`（使用中の場合は次の空きポート）が自動的に開きます。`R2_FILE_MANAGER_PORT`で固定ポートも指定できます。
 
+## CLI
+
+無引数では従来どおりWeb画面を起動します。設定済みの接続情報を使って、CLIからバケットやオブジェクトの一覧も取得できます。
+
+```powershell
+# ヘルプ
+r2-file-manager --help
+
+# バケット一覧
+r2-file-manager list-buckets
+
+# バケット直下または指定プレフィックスの一覧
+r2-file-manager list-objects my-bucket
+r2-file-manager list-objects my-bucket --prefix images/
+
+# サブフォルダーを含む全オブジェクトをJSONで取得
+r2-file-manager list-objects my-bucket --recursive --json
+```
+
+Web画面で接続設定を保存していない環境では、`R2_ACCOUNT_ID`、`R2_ACCESS_KEY`、`R2_SECRET_ACCESS_KEY`を指定することでもCLIを利用できます。各コマンドのオプションは `r2-file-manager <サブコマンド> --help` で確認できます。
+
 初期設定値には次の環境変数が使用されます。
 
 - `R2_ACCOUNT_ID`

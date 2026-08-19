@@ -26,6 +26,27 @@ def test_connection_uses_plain_list_buckets_for_r2_compatibility():
     assert service.client.calls == [{}]
 
 
+def test_recursive_object_listing_omits_delimiter():
+    class ListingClient:
+        def __init__(self):
+            self.params = None
+
+        def list_objects_v2(self, **kwargs):
+            self.params = kwargs
+            return {"Contents": []}
+
+    service = R2Service.__new__(R2Service)
+    service.client = ListingClient()
+
+    service.list_objects("assets", "images/", recursive=True)
+
+    assert service.client.params == {
+        "Bucket": "assets",
+        "Prefix": "images/",
+        "MaxKeys": 500,
+    }
+
+
 def make_settings(public_url=""):
     return ConnectionSettings(
         id="test", name="Test", account_id="a" * 32, access_key_id="access", public_url=public_url

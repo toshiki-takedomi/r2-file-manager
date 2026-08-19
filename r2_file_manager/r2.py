@@ -76,14 +76,20 @@ class R2Service:
         self.client.delete_bucket(Bucket=name)
 
     def list_objects(
-        self, bucket: str, prefix: str = "", continuation_token: str | None = None
+        self,
+        bucket: str,
+        prefix: str = "",
+        continuation_token: str | None = None,
+        *,
+        recursive: bool = False,
     ) -> dict[str, Any]:
         params: dict[str, Any] = {
             "Bucket": bucket,
             "Prefix": prefix,
-            "Delimiter": "/",
             "MaxKeys": 500,
         }
+        if not recursive:
+            params["Delimiter"] = "/"
         if continuation_token:
             params["ContinuationToken"] = continuation_token
         response = self.client.list_objects_v2(**params)
