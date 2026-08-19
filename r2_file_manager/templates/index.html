@@ -37,6 +37,7 @@
           <span>合計ストレージ</span>
           <strong id="usage-storage">--</strong>
           <small id="usage-storage-detail">Cloudflareから取得中</small>
+          <small id="usage-updated-at" class="usage-updated-at"></small>
         </div>
         <div class="usage-card">
           <span>オブジェクト</span>
@@ -167,6 +168,33 @@
       <label>バケット名<input name="name" pattern="[a-z0-9][a-z0-9-]{1,61}[a-z0-9]" minlength="3" maxlength="63" placeholder="my-bucket" required><small>3～63文字の小文字、数字、ハイフン</small></label>
       <div id="bucket-message" class="inline-message hidden"></div>
       <div class="modal-footer actions"><button type="button" class="secondary-button modal-close">キャンセル</button><button type="submit" class="primary-button">作成</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="object-actions-dialog" class="modal small-modal">
+    <form method="dialog">
+      <div class="modal-header"><div><p class="eyebrow">OBJECT</p><h2>ファイル操作</h2></div><button type="button" class="modal-close" aria-label="閉じる">×</button></div>
+      <p id="object-action-name" class="object-action-name"></p>
+      <div class="object-action-list">
+        <button id="download-object" type="button" class="object-action-button primary-action"><span>↓</span><span><strong>ダウンロード</strong><small>この端末にファイルを保存</small></span></button>
+        <button id="show-download-info" type="button" class="object-action-button"><span>↓</span><span><strong>ダウンロード情報</strong><small>URLとLinux用コマンドを表示</small></span></button>
+        <button id="delete-object" type="button" class="object-action-button danger-action"><span>×</span><span><strong>削除</strong><small>このファイルをR2から削除</small></span></button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="download-dialog" class="modal download-modal">
+    <form method="dialog">
+      <div class="modal-header"><div><p class="eyebrow">DOWNLOAD</p><h2>ダウンロード情報</h2></div><button type="button" class="modal-close" aria-label="閉じる">×</button></div>
+      <div class="download-heading"><strong id="download-file-name"></strong><span id="download-url-kind" class="status-badge"></span></div>
+      <p id="download-note" class="download-note"></p>
+      <label>ダウンロードURL</label>
+      <div class="copy-row"><input id="download-url" type="text" readonly><button type="button" class="secondary-button copy-button" data-copy-target="download-url">コピー</button></div>
+      <div class="command-heading"><strong>Linuxなど他の環境からダウンロード</strong><small>ターミナルで実行できます</small></div>
+      <label class="command-label">curl</label>
+      <div class="command-row"><code id="curl-command"></code><button type="button" class="secondary-button copy-button" data-copy-target="curl-command">コピー</button></div>
+      <label class="command-label">wget</label>
+      <div class="command-row"><code id="wget-command"></code><button type="button" class="secondary-button copy-button" data-copy-target="wget-command">コピー</button></div>
     </form>
   </dialog>
 

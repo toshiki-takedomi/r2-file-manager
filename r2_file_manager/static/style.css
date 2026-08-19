@@ -46,6 +46,7 @@ h2 { font-size: 20px; margin-bottom: 8px; }
 .usage-card span { color: var(--muted); font-size: 12px; font-weight: 650; }
 .usage-card strong { margin: 7px 0 3px; font-size: 24px; font-weight: 750; }
 .usage-card small { color: var(--muted); }
+.usage-card .usage-updated-at { margin-top: 4px; display: block; font-size: 11px; line-height: 1.4; }
 .usage-unavailable { grid-column: 1 / -1; min-height: 82px; align-items: flex-start; }
 .usage-unavailable strong { font-size: 16px; }
 .usage-unavailable .link-button { padding-bottom: 0; }
@@ -132,6 +133,34 @@ label small { display: block; margin-top: 5px; color: var(--muted); font-weight:
 .inline-message { margin-top: 15px; padding: 10px 12px; border-radius: 7px; background: var(--danger-soft); color: var(--danger); }
 .inline-message.success { background: #eaf8f2; color: var(--success); }
 .confirm-text { color: var(--muted); line-height: 1.7; white-space: pre-line; }
+
+.object-action-name { margin: -7px 0 16px; overflow-wrap: anywhere; color: var(--muted); font-size: 13px; }
+.object-action-list { display: grid; gap: 8px; }
+.object-action-button { width: 100%; padding: 13px 14px; display: flex; align-items: center; gap: 13px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; text-align: left; }
+.object-action-button:hover { background: var(--surface-muted); border-color: var(--border-strong); }
+.object-action-button.primary-action { color: white; background: var(--blue); border-color: var(--blue); }
+.object-action-button.primary-action:hover { background: var(--blue-hover); border-color: var(--blue-hover); }
+.object-action-button > span:first-child { width: 30px; height: 30px; display: grid; place-items: center; color: var(--blue); background: var(--blue-soft); border-radius: 7px; font-size: 18px; }
+.object-action-button.primary-action > span:first-child { color: white; background: rgb(255 255 255 / 16%); }
+.object-action-button strong, .object-action-button small { display: block; }
+.object-action-button small { margin-top: 3px; color: var(--muted); }
+.object-action-button.primary-action small { color: rgb(255 255 255 / 78%); }
+.object-action-button.danger-action > span:first-child, .object-action-button.danger-action strong { color: var(--danger); }
+.object-action-button.danger-action > span:first-child { background: var(--danger-soft); }
+.download-modal { width: min(720px, calc(100vw - 48px)); }
+.download-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.download-heading strong { min-width: 0; overflow-wrap: anywhere; }
+.download-note { margin: 8px 0 18px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.copy-row { display: flex; gap: 8px; align-items: center; }
+.copy-row input { min-width: 0; flex: 1; margin-top: 6px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; }
+.copy-row button { margin-top: 6px; flex: 0 0 auto; }
+.command-heading { margin: 22px 0 12px; }
+.command-heading strong, .command-heading small { display: block; }
+.command-heading small { margin-top: 3px; color: var(--muted); }
+.command-label { margin-top: 11px; font-size: 13px; }
+.command-row { margin-top: 5px; padding: 10px; display: flex; align-items: flex-start; gap: 10px; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
+.command-row code { min-width: 0; flex: 1; overflow-wrap: anywhere; white-space: pre-wrap; line-height: 1.55; }
+.command-row button { flex: 0 0 auto; }
 
 .upload-modal { width: min(680px, calc(100vw - 48px)); }
 .destination-row { display: flex; align-items: center; gap: 7px; margin-top: 6px; }

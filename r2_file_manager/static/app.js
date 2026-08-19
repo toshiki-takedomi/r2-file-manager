@@ -12,6 +12,8 @@
     selected: new Set(),
     transfers: new Map(),
     pendingFiles: [],
+    actionObject: null,
+    metricsRefreshTimers: [],
   };
 
   class ApiError extends Error {
@@ -76,11 +78,14 @@
 
   function setBusy(button, busy, label = "処理中…") {
     if (busy) {
-      button.dataset.label = button.textContent;
+      button.dataset.busyHtml = button.innerHTML;
       button.textContent = label;
       button.disabled = true;
     } else {
-      button.textContent = button.dataset.label || button.textContent;
+      if (button.dataset.busyHtml) {
+        button.innerHTML = button.dataset.busyHtml;
+        delete button.dataset.busyHtml;
+      }
       button.disabled = false;
     }
   }
@@ -211,6 +216,7 @@
     state.prefix = "";
     $("#bucket-view").classList.remove("hidden");
     $("#object-view").classList.add("hidden");
+    loadMetrics({ quiet: true });
   }
 
   async function loadBuckets() {
@@ -236,15 +242,18 @@
     }
   }
 
-  async function loadMetrics() {
+  async function loadMetrics({ quiet = false } = {}) {
     const metricCards = document.querySelectorAll("#usage-panel .usage-card:not(.usage-unavailable)");
     const unavailable = $("#usage-unavailable");
     metricCards.forEach((card) => card.classList.remove("hidden"));
     unavailable.classList.add("hidden");
-    $("#usage-storage").textContent = "--";
-    $("#usage-objects").textContent = "--";
-    $("#usage-uploading").textContent = "--";
-    $("#usage-storage-detail").textContent = "Cloudflareから取得中";
+    if (!quiet) {
+      $("#usage-storage").textContent = "--";
+      $("#usage-objects").textContent = "--";
+      $("#usage-uploading").textContent = "--";
+      $("#usage-storage-detail").textContent = "Cloudflareから取得中";
+      $("#usage-updated-at").textContent = "";
+    }
     try {
       const result = await api("/api/metrics");
       if (!result.configured) {
@@ -258,11 +267,19 @@
       $("#usage-objects").textContent = new Intl.NumberFormat("ja-JP").format(metrics.objects);
       $("#usage-uploading").textContent = formatBytes(metrics.uploading_bytes);
       $("#usage-storage-detail").textContent = `Standard ${formatBytes(metrics.storage_classes.standard.stored_bytes)}・IA ${formatBytes(metrics.storage_classes.infrequent_access.stored_bytes)}`;
+      $("#usage-updated-at").textContent = `${new Intl.DateTimeFormat("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date())} 更新・Cloudflare集計値の反映には時間がかかる場合があります`;
     } catch (error) {
       metricCards.forEach((card) => card.classList.add("hidden"));
       unavailable.classList.remove("hidden");
       unavailable.querySelector("strong").textContent = `取得できませんでした: ${error.message}`;
     }
+  }
+
+  function scheduleMetricsRefresh() {
+    for (const timer of state.metricsRefreshTimers) clearTimeout(timer);
+    state.metricsRefreshTimers = [0, 10_000, 30_000, 60_000, 120_000, 300_000].map((delay) => (
+      setTimeout(() => loadMetrics({ quiet: true }), delay)
+    ));
   }
 
   async function createBucket(event) {
@@ -372,18 +389,101 @@
       <td class="check-column"><input type="checkbox" aria-label="${escapeHtml(object.name)}を選択"></td>
       <td><span class="row-name"><span class="file-icon">▤</span>${escapeHtml(object.name)}</span></td>
       <td>ファイル</td><td>${escapeHtml(object.storage_class || "STANDARD")}</td><td>${formatBytes(object.size)}</td><td>${formatDate(object.last_modified)}</td>
-      <td><button class="row-menu" title="削除">⋯</button></td>`;
+      <td><button class="row-menu" title="ファイル操作" aria-label="${escapeHtml(object.name)}の操作">⋯</button></td>`;
     const checkbox = row.querySelector('input[type="checkbox"]');
     checkbox.checked = state.selected.has(object.key);
     checkbox.addEventListener("change", () => {
       if (checkbox.checked) state.selected.add(object.key); else state.selected.delete(object.key);
       updateSelectionControls();
     });
-    row.querySelector(".row-menu").addEventListener("click", async () => {
-      const confirmed = await confirmAction("ファイルを削除", `「${object.name}」を削除しますか？\nこの操作は取り消せません。`);
-      if (confirmed) await deleteObjectKeys([object.key]);
-    });
+    row.querySelector(".row-menu").addEventListener("click", () => openObjectActions(object));
     return row;
+  }
+
+  function openObjectActions(object) {
+    state.actionObject = object;
+    $("#object-action-name").textContent = object.key;
+    $("#object-actions-dialog").showModal();
+  }
+
+  function shellQuote(value) {
+    return `'${String(value).replaceAll("'", `'"'"'`)}'`;
+  }
+
+  async function copyText(value) {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast("クリップボードにコピーしました。");
+    } catch (_error) {
+      const area = document.createElement("textarea");
+      area.value = value;
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.append(area);
+      area.select();
+      document.execCommand("copy");
+      area.remove();
+      toast("クリップボードにコピーしました。");
+    }
+  }
+
+  async function showDownloadInfo() {
+    const object = state.actionObject;
+    if (!object || !state.bucket) return;
+    $("#object-actions-dialog").close();
+    const button = $("#show-download-info");
+    try {
+      setBusy(button, true, "URLを生成中…");
+      const params = new URLSearchParams({ bucket: state.bucket, key: object.key });
+      const info = await api(`/api/objects/download-info?${params}`);
+      const fileName = object.key.split("/").pop() || "download";
+      $("#download-file-name").textContent = object.key;
+      $("#download-url").value = info.url;
+      $("#download-url-kind").textContent = info.public ? "公開URL" : `署名URL（${Math.round(info.expires_in / 60)}分有効）`;
+      $("#download-url-kind").classList.toggle("configured", info.public);
+      $("#download-url-kind").classList.toggle("loaded", !info.public);
+      $("#download-note").textContent = info.public
+        ? "Public URL設定から生成した期限のないURLです。"
+        : "URLには認証情報が含まれます。有効期限内は第三者に共有しないでください。";
+      $("#curl-command").textContent = `curl --fail --location --output ${shellQuote(fileName)} ${shellQuote(info.url)}`;
+      $("#wget-command").textContent = `wget --output-document=${shellQuote(fileName)} ${shellQuote(info.url)}`;
+      $("#download-dialog").showModal();
+    } catch (error) {
+      toast(error.message, "error");
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
+  async function downloadObject() {
+    const object = state.actionObject;
+    if (!object || !state.bucket) return;
+    const button = $("#download-object");
+    try {
+      setBusy(button, true, "ダウンロードを準備中…");
+      const params = new URLSearchParams({ bucket: state.bucket, key: object.key });
+      const info = await api(`/api/objects/download-url?${params}`);
+      const link = document.createElement("a");
+      link.href = info.url;
+      link.download = info.file_name;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      $("#object-actions-dialog").close();
+      toast("ダウンロードを開始しました。");
+    } catch (error) {
+      toast(error.message, "error");
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
+  async function deleteActionObject() {
+    const object = state.actionObject;
+    if (!object) return;
+    $("#object-actions-dialog").close();
+    const confirmed = await confirmAction("ファイルを削除", `「${object.name}」を削除しますか？\nこの操作は取り消せません。`);
+    if (confirmed) await deleteObjectKeys([object.key]);
   }
 
   function updateSelectionControls() {
@@ -400,6 +500,7 @@
       if (result.errors.length) toast(`${result.deleted.length}件成功、${result.errors.length}件失敗しました。`, "error");
       else toast(`${result.deleted.length}件を削除しました。`);
       await loadObjects(false);
+      if (result.deleted.length) scheduleMetricsRefresh();
     } catch (error) { toast(error.message, "error"); }
   }
 
@@ -562,6 +663,7 @@
       renderTransfers();
       toast(`${session.file_name}をアップロードしました。`);
       if (state.bucket === session.bucket) await loadObjects(false);
+      scheduleMetricsRefresh();
       setTimeout(() => { state.transfers.delete(session.id); renderTransfers(); }, 6000);
     } catch (error) {
       if (transfer.cancelled) return;
@@ -679,6 +781,7 @@
       state.transfers.delete(transfer.session.id);
       renderTransfers();
       toast("アップロードをキャンセルしました。");
+      scheduleMetricsRefresh();
     } catch (error) {
       transfer.status = "失敗";
       transfer.error = error.message;
@@ -734,6 +837,13 @@
     uploadDropArea.addEventListener("drop", (event) => { event.preventDefault(); uploadDropArea.classList.remove("dragging"); addCandidateFiles(event.dataTransfer.files); });
     $("#load-more").addEventListener("click", () => loadObjects(true));
     $("#delete-selected").addEventListener("click", deleteSelected);
+    $("#download-object").addEventListener("click", downloadObject);
+    $("#show-download-info").addEventListener("click", showDownloadInfo);
+    $("#delete-object").addEventListener("click", deleteActionObject);
+    document.querySelectorAll(".copy-button").forEach((button) => button.addEventListener("click", () => {
+      const target = $(`#${button.dataset.copyTarget}`);
+      copyText(target.value ?? target.textContent);
+    }));
     $("#select-all").addEventListener("change", (event) => {
       document.querySelectorAll('#object-rows tr[data-key] input[type="checkbox"]').forEach((checkbox) => {
         checkbox.checked = event.target.checked;

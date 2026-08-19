@@ -40,6 +40,16 @@ class FakeService:
     def list_buckets(self):
         return []
 
+    def download_info(self, bucket, key):
+        return {"url": f"https://signed.example/{bucket}/{key}", "public": False, "expires_in": 3600}
+
+    def download_url(self, bucket, key):
+        return {
+            "url": f"https://signed.example/download/{bucket}/{key}",
+            "expires_in": 300,
+            "file_name": key.rsplit("/", 1)[-1],
+        }
+
 
 def make_client(tmp_path):
     store = ConfigStore(tmp_path, MemorySecrets())
@@ -79,6 +89,47 @@ def test_metrics_endpoint_is_optional(tmp_path):
 
     assert response.status_code == 200
     assert response.get_json() == {"configured": False}
+    assert response.cache_control.no_store
+
+
+def test_download_info_endpoint(tmp_path):
+    client, store, headers = make_client(tmp_path)
+    store.save(
+        {"name": "Test R2", "account_id": "a" * 32, "access_key_id": "access", "public_url": ""},
+        "secret",
+    )
+
+    response = client.get(
+        "/api/objects/download-info?bucket=models&key=checkpoints/model.bin", headers=headers
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "url": "https://signed.example/models/checkpoints/model.bin",
+        "public": False,
+        "expires_in": 3600,
+    }
+    assert response.cache_control.no_store
+
+
+def test_download_url_endpoint(tmp_path):
+    client, store, headers = make_client(tmp_path)
+    store.save(
+        {"name": "Test R2", "account_id": "a" * 32, "access_key_id": "access", "public_url": ""},
+        "secret",
+    )
+
+    response = client.get(
+        "/api/objects/download-url?bucket=models&key=checkpoints/model.bin", headers=headers
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "url": "https://signed.example/download/models/checkpoints/model.bin",
+        "expires_in": 300,
+        "file_name": "model.bin",
+    }
+    assert response.cache_control.no_store
 
 
 def test_settings_are_tested_then_saved_without_plaintext_secret(tmp_path):

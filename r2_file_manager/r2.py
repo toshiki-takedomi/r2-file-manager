@@ -4,6 +4,7 @@ import math
 import re
 from datetime import datetime
 from typing import Any
+from urllib.parse import quote
 
 import boto3
 from botocore.config import Config
@@ -117,6 +118,42 @@ class R2Service:
             if status == 404 or code in {"404", "NoSuchKey", "NotFound"}:
                 return False
             raise
+
+    def download_info(self, bucket: str, key: str, expires_in: int = 3600) -> dict[str, Any]:
+        if self.settings.public_url:
+            return {
+                "url": f"{self.settings.public_url}/{quote(key, safe='/')}",
+                "public": True,
+                "expires_in": None,
+            }
+        url = self.client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": bucket, "Key": key},
+            ExpiresIn=expires_in,
+        )
+        return {"url": url, "public": False, "expires_in": expires_in}
+
+    def download_url(self, bucket: str, key: str, expires_in: int = 300) -> dict[str, Any]:
+        file_name = key.rsplit("/", 1)[-1].replace("\r", "").replace("\n", "") or "download"
+        ascii_name = file_name.encode("ascii", "ignore").decode("ascii").strip()
+        ascii_name = ascii_name.replace("\\", "_").replace('"', "_")
+        if not ascii_name or ascii_name.startswith("."):
+            suffix = ascii_name if re.fullmatch(r"\.[A-Za-z0-9._-]{1,20}", ascii_name) else ""
+            ascii_name = f"download{suffix}"
+        disposition = (
+            f'attachment; filename="{ascii_name}"; '
+            f"filename*=UTF-8''{quote(file_name, safe='')}"
+        )
+        url = self.client.generate_presigned_url(
+            "get_object",
+            Params={
+                "Bucket": bucket,
+                "Key": key,
+                "ResponseContentDisposition": disposition,
+            },
+            ExpiresIn=expires_in,
+        )
+        return {"url": url, "expires_in": expires_in, "file_name": file_name}
 
     def delete_objects(self, bucket: str, keys: list[str]) -> dict[str, Any]:
         if not keys:

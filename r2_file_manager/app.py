@@ -165,8 +165,14 @@ def create_app(
             raise RuntimeError("接続設定を完了してください。")
         metrics_token = store.get_metrics_token(settings)
         if not metrics_token:
-            return jsonify(configured=False)
-        return jsonify(configured=True, metrics=metrics_fetcher(settings.account_id, metrics_token))
+            response = jsonify(configured=False)
+        else:
+            response = jsonify(
+                configured=True,
+                metrics=metrics_fetcher(settings.account_id, metrics_token),
+            )
+        response.cache_control.no_store = True
+        return response
 
     @app.get("/api/buckets")
     def list_buckets():
@@ -193,6 +199,26 @@ def create_app(
         prefix = request.args.get("prefix", "")
         token = request.args.get("continuation_token") or None
         return jsonify(current_service().list_objects(bucket, prefix, token))
+
+    @app.get("/api/objects/download-info")
+    def object_download_info():
+        bucket = request.args.get("bucket", "")
+        key = request.args.get("key", "")
+        if not bucket or not key:
+            raise ValueError("ダウンロード対象が正しくありません。")
+        response = jsonify(current_service().download_info(bucket, key))
+        response.cache_control.no_store = True
+        return response
+
+    @app.get("/api/objects/download-url")
+    def object_download_url():
+        bucket = request.args.get("bucket", "")
+        key = request.args.get("key", "")
+        if not bucket or not key:
+            raise ValueError("ダウンロード対象が正しくありません。")
+        response = jsonify(current_service().download_url(bucket, key))
+        response.cache_control.no_store = True
+        return response
 
     @app.post("/api/objects/delete")
     def delete_objects():

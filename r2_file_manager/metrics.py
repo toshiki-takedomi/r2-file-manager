@@ -45,7 +45,11 @@ def parse_account_metrics(result: dict[str, Any]) -> dict[str, Any]:
 def fetch_account_metrics(account_id: str, api_token: str) -> dict[str, Any]:
     request = Request(
         f"https://api.cloudflare.com/client/v4/accounts/{account_id}/r2/metrics",
-        headers={"Authorization": f"Bearer {api_token}", "Accept": "application/json"},
+        headers={
+            "Authorization": f"Bearer {api_token}",
+            "Accept": "application/json",
+            "Cache-Control": "no-cache",
+        },
         method="GET",
     )
     try:
@@ -65,4 +69,3 @@ def fetch_account_metrics(account_id: str, api_token: str) -> dict[str, Any]:
         message = errors[0].get("message") if errors and isinstance(errors[0], dict) else None
         raise RuntimeError(message or "Cloudflare使用量APIから正常な応答がありませんでした。")
     return parse_account_metrics(payload["result"])
-
