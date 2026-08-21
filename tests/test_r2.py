@@ -47,6 +47,63 @@ def test_recursive_object_listing_omits_delimiter():
     }
 
 
+def test_object_search_is_case_insensitive_and_pages_until_matches_are_found():
+    class SearchClient:
+        def __init__(self):
+            self.calls = []
+
+        def list_objects_v2(self, **kwargs):
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                return {
+                    "Contents": [{"Key": "unrelated/file.txt", "Size": 1}],
+                    "NextContinuationToken": "page-2",
+                }
+            return {
+                "Contents": [
+                    {"Key": "Models/ANIMA_v1.bin", "Size": 10},
+                    {"Key": "folders/anima/", "Size": 0},
+                ]
+            }
+
+    service = R2Service.__new__(R2Service)
+    service.client = SearchClient()
+
+    result = service.search_objects("assets", "anima")
+
+    assert [item["key"] for item in result["objects"]] == ["Models/ANIMA_v1.bin"]
+    assert result["next_token"] is None
+    assert result["scanned"] == 3
+    assert service.client.calls == [
+        {"Bucket": "assets", "MaxKeys": 100},
+        {"Bucket": "assets", "MaxKeys": 100, "ContinuationToken": "page-2"},
+    ]
+
+
+def test_object_search_stops_at_scan_limit_and_returns_continuation_token():
+    class SparseSearchClient:
+        def __init__(self):
+            self.calls = 0
+
+        def list_objects_v2(self, **_kwargs):
+            self.calls += 1
+            return {
+                "Contents": [
+                    {"Key": f"unrelated/{self.calls}-{index}.txt", "Size": 1}
+                    for index in range(100)
+                ],
+                "NextContinuationToken": f"page-{self.calls + 1}",
+            }
+
+    service = R2Service.__new__(R2Service)
+    service.client = SparseSearchClient()
+
+    result = service.search_objects("assets", "missing")
+
+    assert result == {"objects": [], "next_token": "page-11", "scanned": 1000}
+    assert service.client.calls == 10
+
+
 def make_settings(public_url=""):
     return ConnectionSettings(
         id="test", name="Test", account_id="a" * 32, access_key_id="access", public_url=public_url

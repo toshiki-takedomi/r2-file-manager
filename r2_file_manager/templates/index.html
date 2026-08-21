@@ -73,7 +73,7 @@
       <div class="object-toolbar">
         <nav id="breadcrumbs" class="breadcrumbs" aria-label="現在の場所"></nav>
         <div class="actions">
-          <button id="wget-selected" class="secondary-button hidden">wgetを一括生成</button>
+          <button id="open-batch-download" class="secondary-button">一括DLのURL生成</button>
           <button id="delete-selected" class="danger-secondary hidden">選択項目を削除</button>
           <button id="refresh-objects" class="secondary-button" title="更新">↻</button>
           <button id="upload-button" class="primary-button">⇧ アップロード</button>
@@ -214,14 +214,58 @@
     </form>
   </dialog>
 
+  <dialog id="batch-selection-dialog" class="modal batch-selection-modal">
+    <div class="modal-shell">
+      <div class="modal-header"><div><p class="eyebrow">BATCH DOWNLOAD</p><h2>一括ダウンロードするファイルを選択</h2></div><button type="button" class="modal-close" aria-label="閉じる">×</button></div>
+      <section class="batch-browser" aria-label="ファイルブラウザ">
+        <nav id="batch-breadcrumbs" class="breadcrumbs batch-breadcrumbs" aria-label="一括ダウンロードの現在の場所"></nav>
+        <form id="batch-search-form" class="batch-search-form" role="search">
+          <input id="batch-search-input" type="search" autocomplete="off" placeholder="ファイル名・パスを検索..." aria-label="バケット全体を検索">
+          <button type="submit" class="secondary-button">検索</button>
+          <button id="clear-batch-search" type="button" class="link-button hidden">検索を解除</button>
+        </form>
+        <div class="batch-browser-heading">
+          <span id="batch-browser-description">現在のフォルダ</span>
+          <button id="select-visible-batch" type="button" class="link-button">表示中をすべて選択</button>
+        </div>
+        <div class="batch-table-wrap">
+          <table class="batch-table">
+            <thead><tr><th class="check-column"></th><th>名前・パス</th><th>サイズ</th><th>更新日時</th></tr></thead>
+            <tbody id="batch-object-rows"></tbody>
+          </table>
+          <div id="batch-browser-empty" class="batch-empty hidden">該当するファイルがありません。</div>
+        </div>
+        <button id="batch-load-more" type="button" class="load-more hidden">さらに読み込む</button>
+      </section>
+      <section class="batch-selected-section" aria-label="選択済みファイル">
+        <div class="batch-selected-heading">
+          <strong>選択済みファイル <span id="batch-selected-count">0 / 500件</span></strong>
+          <button id="clear-batch-selection" type="button" class="link-button" disabled>すべて解除</button>
+        </div>
+        <div id="batch-selected-list" class="batch-selected-list"><div class="batch-empty">ファイルが選択されていません。</div></div>
+      </section>
+      <div id="batch-selection-message" class="inline-message hidden"></div>
+      <div class="modal-footer batch-selection-footer actions">
+        <button type="button" class="secondary-button dialog-close-button">キャンセル</button>
+        <button id="generate-batch-download" type="button" class="primary-button" disabled>URLを生成</button>
+      </div>
+    </div>
+  </dialog>
+
   <dialog id="batch-download-dialog" class="modal download-modal">
-    <form method="dialog">
-      <div class="modal-header"><div><p class="eyebrow">DOWNLOAD</p><h2>wgetコマンドを一括生成</h2></div><button type="button" class="modal-close" aria-label="閉じる">×</button></div>
+    <div class="modal-shell">
+      <div class="modal-header"><div><p class="eyebrow">DOWNLOAD</p><h2>一括ダウンロード情報</h2></div><button type="button" class="modal-close" aria-label="閉じる">×</button></div>
       <div class="download-heading"><strong id="batch-download-count"></strong><span id="batch-download-url-kind" class="status-badge"></span></div>
       <p id="batch-download-note" class="download-note"></p>
-      <div class="command-heading"><strong>Linuxなど他の環境からダウンロード</strong><small>コピーしてターミナルで実行できます</small></div>
-      <div class="command-row batch-command-row"><code id="batch-wget-command"></code><button type="button" class="secondary-button copy-button" data-copy-target="batch-wget-command">すべてコピー</button></div>
-    </form>
+      <div class="batch-result-tabs" role="tablist" aria-label="ダウンロード形式">
+        <button type="button" class="batch-result-tab active" data-batch-tab="url" role="tab" aria-selected="true">URL</button>
+        <button type="button" class="batch-result-tab" data-batch-tab="curl" role="tab" aria-selected="false">curl</button>
+        <button type="button" class="batch-result-tab" data-batch-tab="wget" role="tab" aria-selected="false">wget</button>
+      </div>
+      <div class="command-row batch-command-row"><code id="batch-result-content"></code></div>
+      <div class="batch-result-actions"><button id="copy-batch-result" type="button" class="secondary-button">すべてコピー</button></div>
+      <div class="modal-footer actions"><button type="button" class="primary-button dialog-close-button">閉じる</button></div>
+    </div>
   </dialog>
 
   <dialog id="confirm-dialog" class="modal small-modal">
@@ -233,6 +277,7 @@
   </dialog>
 
   <div id="toast-region" class="toast-region" aria-live="polite"></div>
+  <script src="{{ url_for('static', filename='download_utils.js') }}"></script>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

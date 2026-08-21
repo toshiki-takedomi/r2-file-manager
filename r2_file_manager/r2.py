@@ -115,6 +115,54 @@ class R2Service:
             "next_token": response.get("NextContinuationToken"),
         }
 
+    def search_objects(
+        self,
+        bucket: str,
+        query: str,
+        continuation_token: str | None = None,
+        *,
+        result_limit: int = 100,
+        scan_limit: int = 1000,
+    ) -> dict[str, Any]:
+        normalized_query = query.casefold()
+        if not normalized_query:
+            raise ValueError("検索文字列を入力してください。")
+
+        objects: list[dict[str, Any]] = []
+        token = continuation_token
+        scanned = 0
+        page_count = 0
+        max_pages = math.ceil(scan_limit / 100)
+        while scanned < scan_limit and page_count < max_pages:
+            page_size = min(100, scan_limit - scanned)
+            params: dict[str, Any] = {"Bucket": bucket, "MaxKeys": page_size}
+            if token:
+                params["ContinuationToken"] = token
+            response = self.client.list_objects_v2(**params)
+            page_count += 1
+            contents = response.get("Contents", [])
+            scanned += len(contents)
+            for item in contents:
+                key = item["Key"]
+                if key.endswith("/") or normalized_query not in key.casefold():
+                    continue
+                objects.append(
+                    {
+                        "key": key,
+                        "name": key.rsplit("/", 1)[-1],
+                        "size": item.get("Size", 0),
+                        "etag": item.get("ETag", "").strip('"'),
+                        "last_modified": serialize_datetime(item.get("LastModified")),
+                        "storage_class": item.get("StorageClass", "STANDARD"),
+                    }
+                )
+
+            token = response.get("NextContinuationToken")
+            if not token or len(objects) >= result_limit:
+                break
+
+        return {"objects": objects, "next_token": token, "scanned": scanned}
+
     def object_exists(self, bucket: str, key: str) -> bool:
         try:
             self.client.head_object(Bucket=bucket, Key=key)

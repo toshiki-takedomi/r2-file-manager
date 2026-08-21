@@ -109,7 +109,7 @@ tbody tr:hover { background: #f8fbff; }
 .modal { width: min(600px, calc(100vw - 48px)); padding: 0; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
 .modal::backdrop { background: rgb(18 23 31 / 48%); backdrop-filter: blur(2px); }
 .small-modal { width: min(460px, calc(100vw - 48px)); }
-.modal form { min-width: 0; padding: 22px; }
+.modal > form, .modal > .modal-shell { min-width: 0; padding: 22px; }
 .modal-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; }
 .modal-header h2 { margin-bottom: 0; }
 .modal-close { width: 32px; height: 32px; padding: 0; border: 0; border-radius: 6px; background: transparent; font-size: 22px; color: var(--muted); }
@@ -164,7 +164,44 @@ label small { display: block; margin-top: 5px; color: var(--muted); font-weight:
 .command-row code { min-width: 0; flex: 1; overflow-wrap: anywhere; white-space: pre-wrap; line-height: 1.55; }
 .command-row button { flex: 0 0 auto; }
 .batch-command-row { max-height: min(52vh, 480px); overflow: auto; }
-.batch-command-row code { overflow-wrap: normal; word-break: normal; }
+.batch-command-row code { overflow-wrap: anywhere; word-break: break-word; }
+
+.batch-selection-modal { width: min(1040px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: hidden; }
+.batch-selection-modal .modal-shell { max-height: calc(100vh - 34px); display: flex; flex-direction: column; overflow: hidden; }
+.batch-selection-modal .modal-header { flex: 0 0 auto; margin-bottom: 14px; }
+.batch-browser { min-height: 240px; flex: 1 1 auto; display: flex; flex-direction: column; overflow: hidden; }
+.batch-breadcrumbs { min-height: 34px; flex: 0 0 auto; }
+.batch-search-form { margin-top: 8px; display: flex; align-items: center; gap: 8px; }
+.batch-search-form input { min-width: 0; flex: 1; margin-top: 0; }
+.batch-search-form .link-button { padding: 8px; }
+.batch-browser-heading, .batch-selected-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.batch-browser-heading { min-height: 38px; margin-top: 6px; color: var(--muted); font-size: 12px; }
+.batch-table-wrap { min-height: 150px; flex: 1 1 auto; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.batch-table { table-layout: fixed; }
+.batch-table th { position: sticky; top: 0; z-index: 1; }
+.batch-table th:nth-child(2) { width: auto; }
+.batch-table th:nth-child(3) { width: 110px; }
+.batch-table th:nth-child(4) { width: 170px; }
+.batch-table td { height: 48px; }
+.batch-object-cell { min-width: 0; overflow: hidden; }
+.batch-object-cell strong, .batch-object-cell small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.batch-object-cell small { margin-top: 3px; color: var(--muted); font-size: 11px; }
+.batch-empty { padding: 24px; color: var(--muted); text-align: center; }
+.batch-selected-section { margin-top: 14px; flex: 0 0 auto; }
+.batch-selected-heading { min-height: 34px; }
+.batch-selected-heading span { margin-left: 4px; color: var(--muted); font-size: 12px; }
+.batch-selected-list { max-height: 190px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+.batch-selected-item { min-height: 52px; padding: 8px 10px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
+.batch-selected-item:last-child { border-bottom: 0; }
+.batch-selected-info { min-width: 0; flex: 1; }
+.batch-selected-info strong, .batch-selected-info small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.batch-selected-info small { margin-top: 3px; color: var(--muted); font-size: 11px; }
+.batch-selection-footer { flex: 0 0 auto; }
+.batch-result-tabs { display: flex; gap: 6px; margin: 15px 0 9px; border-bottom: 1px solid var(--border); }
+.batch-result-tab { margin-bottom: -1px; padding: 9px 16px; color: var(--muted); background: transparent; border: 0; border-bottom: 2px solid transparent; font-weight: 700; }
+.batch-result-tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+.batch-result-actions { margin-top: 10px; display: flex; justify-content: flex-end; }
+.download-modal .modal-shell { overflow: hidden; }
 
 .upload-modal { width: min(680px, calc(100vw - 48px)); }
 .destination-row { display: flex; align-items: center; gap: 7px; margin-top: 6px; }

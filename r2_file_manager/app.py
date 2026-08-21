@@ -218,6 +218,17 @@ def create_app(
         token = request.args.get("continuation_token") or None
         return jsonify(current_service().list_objects(bucket, prefix, token))
 
+    @app.get("/api/objects/search")
+    def search_objects():
+        bucket = request.args.get("bucket", "")
+        query = request.args.get("query", "").strip()
+        if not bucket:
+            raise ValueError("バケットを指定してください。")
+        if not query:
+            raise ValueError("検索文字列を入力してください。")
+        token = request.args.get("continuation_token") or None
+        return jsonify(current_service().search_objects(bucket, query, token))
+
     @app.get("/api/objects/download-info")
     def object_download_info():
         bucket = request.args.get("bucket", "")

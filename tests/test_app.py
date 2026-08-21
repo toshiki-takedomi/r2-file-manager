@@ -42,6 +42,22 @@ class FakeService:
     def list_buckets(self):
         return []
 
+    def search_objects(self, bucket, query, continuation_token=None):
+        return {
+            "objects": [
+                {
+                    "key": f"archive/{query}.bin",
+                    "name": f"{query}.bin",
+                    "size": 42,
+                    "etag": "etag",
+                    "last_modified": None,
+                    "storage_class": "STANDARD",
+                }
+            ],
+            "next_token": continuation_token,
+            "scanned": 1,
+        }
+
     def download_info(self, bucket, key):
         return {"url": f"https://signed.example/{bucket}/{key}", "public": False, "expires_in": 3600}
 
@@ -199,6 +215,47 @@ def test_batch_download_info_rejects_empty_or_too_many_keys(tmp_path):
 
     assert empty.status_code == 400
     assert too_many.status_code == 400
+
+
+def test_object_search_endpoint(tmp_path):
+    client, store, headers = make_client(tmp_path)
+    store.save(
+        {"name": "Test R2", "account_id": "a" * 32, "access_key_id": "access", "public_url": ""},
+        "secret",
+    )
+
+    response = client.get(
+        "/api/objects/search?bucket=models&query=AnImA&continuation_token=next-page",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "objects": [
+            {
+                "key": "archive/AnImA.bin",
+                "name": "AnImA.bin",
+                "size": 42,
+                "etag": "etag",
+                "last_modified": None,
+                "storage_class": "STANDARD",
+            }
+        ],
+        "next_token": "next-page",
+        "scanned": 1,
+    }
+
+
+def test_object_search_rejects_empty_query(tmp_path):
+    client, store, headers = make_client(tmp_path)
+    store.save(
+        {"name": "Test R2", "account_id": "a" * 32, "access_key_id": "access", "public_url": ""},
+        "secret",
+    )
+
+    response = client.get("/api/objects/search?bucket=models&query=", headers=headers)
+
+    assert response.status_code == 400
 
 
 def test_move_object_endpoint(tmp_path):

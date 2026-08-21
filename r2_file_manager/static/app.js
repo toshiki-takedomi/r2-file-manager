@@ -3,6 +3,11 @@
 
   const token = document.querySelector('meta[name="r2fm-token"]').content;
   const $ = (selector) => document.querySelector(selector);
+  const {
+    addSelection,
+    buildDownloadOutputs,
+    selectVisible,
+  } = globalThis.R2DownloadUtils;
   const state = {
     configured: false,
     connectionName: "未接続",
@@ -10,6 +15,14 @@
     prefix: "",
     nextToken: null,
     selected: new Set(),
+    batchDownloadSelected: new Map(),
+    batchDownloadVisible: new Map(),
+    batchDownloadPrefix: "",
+    batchDownloadNextToken: null,
+    batchDownloadSearchQuery: "",
+    batchDownloadRequestId: 0,
+    batchDownloadOutputValues: null,
+    batchDownloadTab: "url",
     transfers: new Map(),
     moveJobs: new Map(),
     pendingFiles: [],
@@ -407,10 +420,6 @@
     $("#object-actions-dialog").showModal();
   }
 
-  function shellQuote(value) {
-    return `'${String(value).replaceAll("'", `'"'"'`)}'`;
-  }
-
   async function copyText(value) {
     try {
       await navigator.clipboard.writeText(value);
@@ -437,7 +446,7 @@
       setBusy(button, true, "URLを生成中…");
       const params = new URLSearchParams({ bucket: state.bucket, key: object.key });
       const info = await api(`/api/objects/download-info?${params}`);
-      const fileName = object.key.split("/").pop() || "download";
+      const outputs = buildDownloadOutputs([{ key: object.key, url: info.url }]);
       $("#download-file-name").textContent = object.key;
       $("#download-url").value = info.url;
       $("#download-url-kind").textContent = info.public ? "公開URL" : `署名URL（${Math.round(info.expires_in / 60)}分有効）`;
@@ -446,8 +455,8 @@
       $("#download-note").textContent = info.public
         ? "Public URL設定から生成した期限のないURLです。"
         : "URLには認証情報が含まれます。有効期限内は第三者に共有しないでください。";
-      $("#curl-command").textContent = `curl --fail --location --output ${shellQuote(fileName)} ${shellQuote(info.url)}`;
-      $("#wget-command").textContent = `wget --output-document=${shellQuote(fileName)} ${shellQuote(info.url)}`;
+      $("#curl-command").textContent = outputs.curl;
+      $("#wget-command").textContent = outputs.wget;
       $("#download-dialog").showModal();
     } catch (error) {
       toast(error.message, "error");
@@ -479,49 +488,236 @@
     }
   }
 
-  function uniqueDownloadNames(keys) {
-    const used = new Set();
-    return keys.map((key) => {
-      const original = key.split("/").pop() || "download";
-      let candidate = original;
-      let number = 2;
-      while (used.has(candidate)) {
-        const dot = original.lastIndexOf(".");
-        const stem = dot > 0 ? original.slice(0, dot) : original;
-        const suffix = dot > 0 ? original.slice(dot) : "";
-        candidate = `${stem} (${number})${suffix}`;
-        number += 1;
-      }
-      used.add(candidate);
-      return candidate;
+  function resetBatchDownloadState() {
+    state.batchDownloadRequestId += 1;
+    state.batchDownloadSelected.clear();
+    state.batchDownloadVisible.clear();
+    state.batchDownloadPrefix = "";
+    state.batchDownloadNextToken = null;
+    state.batchDownloadSearchQuery = "";
+    hideInline("#batch-selection-message");
+    renderBatchSelection();
+  }
+
+  async function openBatchDownloadDialog() {
+    if (!state.bucket) return;
+    resetBatchDownloadState();
+    state.batchDownloadPrefix = state.prefix;
+    $("#batch-search-input").value = "";
+    renderBatchBreadcrumbs();
+    $("#batch-selection-dialog").showModal();
+    await loadBatchObjects(false);
+  }
+
+  function renderBatchBreadcrumbs() {
+    const nav = $("#batch-breadcrumbs");
+    nav.innerHTML = "";
+    const bucketButton = document.createElement("button");
+    bucketButton.type = "button";
+    bucketButton.textContent = state.bucket;
+    bucketButton.addEventListener("click", () => openBatchFolder(""));
+    nav.append(bucketButton);
+    const parts = state.batchDownloadPrefix.split("/").filter(Boolean);
+    let accumulated = "";
+    parts.forEach((part) => {
+      accumulated += `${part}/`;
+      nav.append(separator());
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = part;
+      const target = accumulated;
+      button.addEventListener("click", () => openBatchFolder(target));
+      nav.append(button);
     });
   }
 
-  async function showBatchDownloadInfo() {
-    if (!state.bucket || state.selected.size === 0) return;
-    const button = $("#wget-selected");
-    const keys = [...state.selected];
+  async function openBatchFolder(prefix) {
+    state.batchDownloadPrefix = prefix;
+    state.batchDownloadSearchQuery = "";
+    state.batchDownloadNextToken = null;
+    $("#batch-search-input").value = "";
+    $("#clear-batch-search").classList.add("hidden");
+    renderBatchBreadcrumbs();
+    await loadBatchObjects(false);
+  }
+
+  async function loadBatchObjects(append = false) {
+    const rows = $("#batch-object-rows");
+    const requestId = ++state.batchDownloadRequestId;
+    if (!append) {
+      rows.innerHTML = '<tr><td colspan="4">読み込み中…</td></tr>';
+      state.batchDownloadVisible.clear();
+      $("#batch-browser-empty").classList.add("hidden");
+    }
+    const searching = Boolean(state.batchDownloadSearchQuery);
+    const params = new URLSearchParams({ bucket: state.bucket });
+    let path = "/api/objects";
+    if (searching) {
+      path = "/api/objects/search";
+      params.set("query", state.batchDownloadSearchQuery);
+    } else {
+      params.set("prefix", state.batchDownloadPrefix);
+    }
+    if (append && state.batchDownloadNextToken) {
+      params.set("continuation_token", state.batchDownloadNextToken);
+    }
+    try {
+      const result = await api(`${path}?${params}`);
+      if (requestId !== state.batchDownloadRequestId) return;
+      if (!append) rows.innerHTML = "";
+      if (!searching) {
+        for (const folder of result.folders) rows.append(batchFolderRow(folder));
+      }
+      for (const object of result.objects) {
+        state.batchDownloadVisible.set(object.key, object);
+        rows.append(batchObjectRow(object, searching));
+      }
+      state.batchDownloadNextToken = result.next_token;
+      $("#batch-load-more").classList.toggle("hidden", !state.batchDownloadNextToken);
+      $("#batch-browser-empty").classList.toggle("hidden", rows.children.length !== 0);
+      $("#batch-browser-description").textContent = searching
+        ? `「${state.batchDownloadSearchQuery}」の検索結果（バケット全体）`
+        : "現在のフォルダ";
+      $("#clear-batch-search").classList.toggle("hidden", !searching);
+    } catch (error) {
+      if (requestId !== state.batchDownloadRequestId) return;
+      if (!append) rows.innerHTML = `<tr><td colspan="4" class="status-error">${escapeHtml(error.message)}</td></tr>`;
+      else toast(error.message, "error");
+    }
+  }
+
+  function batchFolderRow(folder) {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td></td><td><button type="button" class="row-link"><span class="row-name"><span class="folder-icon">□</span>${escapeHtml(folder.name)}/</span></button></td>
+      <td>--</td><td>--</td>`;
+    row.querySelector("button").addEventListener("click", () => openBatchFolder(folder.prefix));
+    return row;
+  }
+
+  function batchObjectRow(object, searching) {
+    const row = document.createElement("tr");
+    row.dataset.batchKey = object.key;
+    const pathDetail = searching || object.key !== object.name
+      ? `<small title="${escapeHtml(object.key)}">${escapeHtml(object.key)}</small>`
+      : "";
+    row.innerHTML = `
+      <td class="check-column"><input type="checkbox" aria-label="${escapeHtml(object.name)}を一括ダウンロード対象に選択"></td>
+      <td class="batch-object-cell"><strong title="${escapeHtml(object.name)}">${escapeHtml(object.name)}</strong>${pathDetail}</td>
+      <td>${formatBytes(object.size)}</td><td>${formatDate(object.last_modified)}</td>`;
+    const checkbox = row.querySelector('input[type="checkbox"]');
+    checkbox.checked = state.batchDownloadSelected.has(object.key);
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked && !addSelection(state.batchDownloadSelected, object)) {
+        checkbox.checked = false;
+        toast("一度に生成できるダウンロードURLは500件までです。", "error");
+      } else if (!checkbox.checked) {
+        state.batchDownloadSelected.delete(object.key);
+      }
+      renderBatchSelection();
+    });
+    return row;
+  }
+
+  function syncBatchCheckboxes() {
+    document.querySelectorAll("#batch-object-rows tr[data-batch-key]").forEach((row) => {
+      row.querySelector('input[type="checkbox"]').checked = state.batchDownloadSelected.has(row.dataset.batchKey);
+    });
+  }
+
+  function renderBatchSelection() {
+    const selected = [...state.batchDownloadSelected.values()];
+    $("#batch-selected-count").textContent = `${selected.length} / 500件`;
+    $("#clear-batch-selection").disabled = selected.length === 0;
+    const generate = $("#generate-batch-download");
+    generate.disabled = selected.length === 0;
+    generate.textContent = selected.length === 0 ? "URLを生成" : `${selected.length}件のURLを生成`;
+    const list = $("#batch-selected-list");
+    list.innerHTML = "";
+    if (selected.length === 0) {
+      list.innerHTML = '<div class="batch-empty">ファイルが選択されていません。</div>';
+      syncBatchCheckboxes();
+      return;
+    }
+    for (const object of selected) {
+      const item = document.createElement("div");
+      item.className = "batch-selected-item";
+      const name = object.key.split("/").pop() || object.name || "download";
+      item.innerHTML = `
+        <div class="batch-selected-info"><strong title="${escapeHtml(name)}">${escapeHtml(name)}</strong><small title="${escapeHtml(object.key)}">${escapeHtml(object.key)}・${formatBytes(object.size)}</small></div>
+        <button type="button" class="remove-candidate" aria-label="${escapeHtml(name)}の選択を解除">×</button>`;
+      item.querySelector("button").addEventListener("click", () => {
+        state.batchDownloadSelected.delete(object.key);
+        renderBatchSelection();
+      });
+      list.append(item);
+    }
+    syncBatchCheckboxes();
+  }
+
+  function selectVisibleBatchObjects() {
+    const result = selectVisible(state.batchDownloadSelected, [...state.batchDownloadVisible.values()]);
+    renderBatchSelection();
+    if (result.limitReached) toast("一度に生成できるダウンロードURLは500件までです。", "error");
+  }
+
+  async function searchBatchObjects(event) {
+    event.preventDefault();
+    const query = $("#batch-search-input").value.trim();
+    if (!query) {
+      await clearBatchSearch();
+      return;
+    }
+    state.batchDownloadSearchQuery = query;
+    state.batchDownloadNextToken = null;
+    await loadBatchObjects(false);
+  }
+
+  async function clearBatchSearch() {
+    state.batchDownloadSearchQuery = "";
+    state.batchDownloadNextToken = null;
+    $("#batch-search-input").value = "";
+    $("#clear-batch-search").classList.add("hidden");
+    await loadBatchObjects(false);
+  }
+
+  function showBatchResultTab(tab) {
+    state.batchDownloadTab = tab;
+    document.querySelectorAll(".batch-result-tab").forEach((button) => {
+      const active = button.dataset.batchTab === tab;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+    $("#batch-result-content").textContent = state.batchDownloadOutputValues?.[tab] || "";
+  }
+
+  async function generateBatchDownloadInfo() {
+    if (!state.bucket || state.batchDownloadSelected.size === 0) return;
+    const button = $("#generate-batch-download");
+    const keys = [...state.batchDownloadSelected.keys()];
     try {
       setBusy(button, true, "URLを生成中…");
       const result = await api("/api/objects/download-info-batch", {
         method: "POST",
         data: { bucket: state.bucket, keys },
       });
-      const names = uniqueDownloadNames(result.downloads.map((item) => item.key));
-      $("#batch-wget-command").textContent = result.downloads.map((item, index) => (
-        `wget --output-document=${shellQuote(names[index])} ${shellQuote(item.url)}`
-      )).join("\n");
+      state.batchDownloadOutputValues = buildDownloadOutputs(result.downloads);
       const publicUrls = result.downloads.every((item) => item.public);
+      const expiresIn = result.downloads.find((item) => !item.public)?.expires_in;
       $("#batch-download-count").textContent = `${result.downloads.length}件のファイル`;
-      $("#batch-download-url-kind").textContent = publicUrls ? "公開URL" : "署名URL（60分有効）";
+      $("#batch-download-url-kind").textContent = publicUrls
+        ? "公開URL"
+        : `署名URL（${Math.round(expiresIn / 60)}分有効）`;
       $("#batch-download-url-kind").classList.toggle("configured", publicUrls);
       $("#batch-download-url-kind").classList.toggle("loaded", !publicUrls);
       $("#batch-download-note").textContent = publicUrls
-        ? "Public URL設定から生成したURLです。同名ファイルには連番を付けています。"
-        : "URLには認証情報が含まれます。60分以内に実行し、第三者へ共有しないでください。同名ファイルには連番を付けています。";
+        ? "Public URL設定から生成した期限のないURLです。"
+        : "URLには認証情報が含まれます。有効期限内は第三者に共有しないでください。";
+      showBatchResultTab("url");
+      $("#batch-selection-dialog").close();
       $("#batch-download-dialog").showModal();
     } catch (error) {
-      toast(error.message, "error");
+      showInline("#batch-selection-message", error.message);
     } finally {
       setBusy(button, false);
     }
@@ -598,11 +794,8 @@
   function updateSelectionControls() {
     const hasSelection = state.selected.size > 0;
     const deleteButton = $("#delete-selected");
-    const wgetButton = $("#wget-selected");
     deleteButton.classList.toggle("hidden", !hasSelection);
-    wgetButton.classList.toggle("hidden", !hasSelection);
     deleteButton.textContent = `選択した${state.selected.size}件を削除`;
-    wgetButton.textContent = `選択した${state.selected.size}件のwgetを生成`;
   }
 
   async function deleteObjectKeys(keys) {
@@ -978,7 +1171,7 @@
   function bindEvents() {
     $("#settings-button").addEventListener("click", openSettings);
     $("#configure-metrics").addEventListener("click", openSettings);
-    document.querySelectorAll(".modal-close").forEach((button) => button.addEventListener("click", () => {
+    document.querySelectorAll(".modal-close, .dialog-close-button").forEach((button) => button.addEventListener("click", () => {
       const dialog = button.closest("dialog");
       if (dialog.dataset.required !== "true") dialog.close();
     }));
@@ -1015,7 +1208,23 @@
     uploadDropArea.addEventListener("dragleave", () => uploadDropArea.classList.remove("dragging"));
     uploadDropArea.addEventListener("drop", (event) => { event.preventDefault(); uploadDropArea.classList.remove("dragging"); addCandidateFiles(event.dataTransfer.files); });
     $("#load-more").addEventListener("click", () => loadObjects(true));
-    $("#wget-selected").addEventListener("click", showBatchDownloadInfo);
+    $("#open-batch-download").addEventListener("click", openBatchDownloadDialog);
+    $("#batch-search-form").addEventListener("submit", searchBatchObjects);
+    $("#clear-batch-search").addEventListener("click", clearBatchSearch);
+    $("#batch-load-more").addEventListener("click", () => loadBatchObjects(true));
+    $("#select-visible-batch").addEventListener("click", selectVisibleBatchObjects);
+    $("#clear-batch-selection").addEventListener("click", () => {
+      state.batchDownloadSelected.clear();
+      renderBatchSelection();
+    });
+    $("#generate-batch-download").addEventListener("click", generateBatchDownloadInfo);
+    $("#batch-selection-dialog").addEventListener("close", resetBatchDownloadState);
+    document.querySelectorAll(".batch-result-tab").forEach((button) => button.addEventListener("click", () => {
+      showBatchResultTab(button.dataset.batchTab);
+    }));
+    $("#copy-batch-result").addEventListener("click", () => {
+      copyText(state.batchDownloadOutputValues?.[state.batchDownloadTab] || "");
+    });
     $("#delete-selected").addEventListener("click", deleteSelected);
     $("#download-object").addEventListener("click", downloadObject);
     $("#move-object").addEventListener("click", openMoveDialog);
