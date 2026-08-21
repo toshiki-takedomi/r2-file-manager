@@ -143,6 +143,64 @@ def test_download_url_endpoint(tmp_path):
     assert response.cache_control.no_store
 
 
+def test_batch_download_info_endpoint(tmp_path):
+    client, store, headers = make_client(tmp_path)
+    store.save(
+        {"name": "Test R2", "account_id": "a" * 32, "access_key_id": "access", "public_url": ""},
+        "secret",
+    )
+
+    response = client.post(
+        "/api/objects/download-info-batch",
+        headers=headers,
+        json={
+            "bucket": "models",
+            "keys": ["checkpoints/model.bin", "reports/result.txt"],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "downloads": [
+            {
+                "key": "checkpoints/model.bin",
+                "url": "https://signed.example/models/checkpoints/model.bin",
+                "public": False,
+                "expires_in": 3600,
+            },
+            {
+                "key": "reports/result.txt",
+                "url": "https://signed.example/models/reports/result.txt",
+                "public": False,
+                "expires_in": 3600,
+            },
+        ]
+    }
+    assert response.cache_control.no_store
+
+
+def test_batch_download_info_rejects_empty_or_too_many_keys(tmp_path):
+    client, store, headers = make_client(tmp_path)
+    store.save(
+        {"name": "Test R2", "account_id": "a" * 32, "access_key_id": "access", "public_url": ""},
+        "secret",
+    )
+
+    empty = client.post(
+        "/api/objects/download-info-batch",
+        headers=headers,
+        json={"bucket": "models", "keys": []},
+    )
+    too_many = client.post(
+        "/api/objects/download-info-batch",
+        headers=headers,
+        json={"bucket": "models", "keys": [f"file-{index}" for index in range(501)]},
+    )
+
+    assert empty.status_code == 400
+    assert too_many.status_code == 400
+
+
 def test_move_object_endpoint(tmp_path):
     client, store, headers = make_client(tmp_path)
     store.save(

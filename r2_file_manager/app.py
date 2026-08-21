@@ -238,6 +238,29 @@ def create_app(
         response.cache_control.no_store = True
         return response
 
+    @app.post("/api/objects/download-info-batch")
+    def object_download_info_batch():
+        values = _json()
+        bucket = str(values.get("bucket") or "")
+        keys = values.get("keys")
+        if (
+            not bucket
+            or not isinstance(keys, list)
+            or not keys
+            or not all(isinstance(key, str) and key for key in keys)
+        ):
+            raise ValueError("ダウンロード対象が正しくありません。")
+        if len(keys) > 500:
+            raise ValueError("一度に生成できるダウンロードURLは500件までです。")
+        if any(len(key.encode("utf-8")) > 1024 for key in keys):
+            raise ValueError("オブジェクト名が1,024バイトを超えています。")
+
+        service = current_service()
+        downloads = [{"key": key, **service.download_info(bucket, key)} for key in keys]
+        response = jsonify(downloads=downloads)
+        response.cache_control.no_store = True
+        return response
+
     @app.post("/api/objects/move")
     def move_object():
         values = _json()

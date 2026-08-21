@@ -73,6 +73,7 @@
       <div class="object-toolbar">
         <nav id="breadcrumbs" class="breadcrumbs" aria-label="現在の場所"></nav>
         <div class="actions">
+          <button id="wget-selected" class="secondary-button hidden">wgetを一括生成</button>
           <button id="delete-selected" class="danger-secondary hidden">選択項目を削除</button>
           <button id="refresh-objects" class="secondary-button" title="更新">↻</button>
           <button id="upload-button" class="primary-button">⇧ アップロード</button>
@@ -210,6 +211,16 @@
       <div class="command-row"><code id="curl-command"></code><button type="button" class="secondary-button copy-button" data-copy-target="curl-command">コピー</button></div>
       <label class="command-label">wget</label>
       <div class="command-row"><code id="wget-command"></code><button type="button" class="secondary-button copy-button" data-copy-target="wget-command">コピー</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="batch-download-dialog" class="modal download-modal">
+    <form method="dialog">
+      <div class="modal-header"><div><p class="eyebrow">DOWNLOAD</p><h2>wgetコマンドを一括生成</h2></div><button type="button" class="modal-close" aria-label="閉じる">×</button></div>
+      <div class="download-heading"><strong id="batch-download-count"></strong><span id="batch-download-url-kind" class="status-badge"></span></div>
+      <p id="batch-download-note" class="download-note"></p>
+      <div class="command-heading"><strong>Linuxなど他の環境からダウンロード</strong><small>コピーしてターミナルで実行できます</small></div>
+      <div class="command-row batch-command-row"><code id="batch-wget-command"></code><button type="button" class="secondary-button copy-button" data-copy-target="batch-wget-command">すべてコピー</button></div>
     </form>
   </dialog>
 

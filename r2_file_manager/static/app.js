@@ -479,6 +479,54 @@
     }
   }
 
+  function uniqueDownloadNames(keys) {
+    const used = new Set();
+    return keys.map((key) => {
+      const original = key.split("/").pop() || "download";
+      let candidate = original;
+      let number = 2;
+      while (used.has(candidate)) {
+        const dot = original.lastIndexOf(".");
+        const stem = dot > 0 ? original.slice(0, dot) : original;
+        const suffix = dot > 0 ? original.slice(dot) : "";
+        candidate = `${stem} (${number})${suffix}`;
+        number += 1;
+      }
+      used.add(candidate);
+      return candidate;
+    });
+  }
+
+  async function showBatchDownloadInfo() {
+    if (!state.bucket || state.selected.size === 0) return;
+    const button = $("#wget-selected");
+    const keys = [...state.selected];
+    try {
+      setBusy(button, true, "URLを生成中…");
+      const result = await api("/api/objects/download-info-batch", {
+        method: "POST",
+        data: { bucket: state.bucket, keys },
+      });
+      const names = uniqueDownloadNames(result.downloads.map((item) => item.key));
+      $("#batch-wget-command").textContent = result.downloads.map((item, index) => (
+        `wget --output-document=${shellQuote(names[index])} ${shellQuote(item.url)}`
+      )).join("\n");
+      const publicUrls = result.downloads.every((item) => item.public);
+      $("#batch-download-count").textContent = `${result.downloads.length}件のファイル`;
+      $("#batch-download-url-kind").textContent = publicUrls ? "公開URL" : "署名URL（60分有効）";
+      $("#batch-download-url-kind").classList.toggle("configured", publicUrls);
+      $("#batch-download-url-kind").classList.toggle("loaded", !publicUrls);
+      $("#batch-download-note").textContent = publicUrls
+        ? "Public URL設定から生成したURLです。同名ファイルには連番を付けています。"
+        : "URLには認証情報が含まれます。60分以内に実行し、第三者へ共有しないでください。同名ファイルには連番を付けています。";
+      $("#batch-download-dialog").showModal();
+    } catch (error) {
+      toast(error.message, "error");
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
   function normalizeObjectKey(rawPath) {
     let path = String(rawPath || "").trim().replaceAll("\\", "/");
     path = path.replace(/^\/+/, "").replace(/\/{2,}/g, "/");
@@ -548,9 +596,13 @@
   }
 
   function updateSelectionControls() {
-    const button = $("#delete-selected");
-    button.classList.toggle("hidden", state.selected.size === 0);
-    button.textContent = `選択した${state.selected.size}件を削除`;
+    const hasSelection = state.selected.size > 0;
+    const deleteButton = $("#delete-selected");
+    const wgetButton = $("#wget-selected");
+    deleteButton.classList.toggle("hidden", !hasSelection);
+    wgetButton.classList.toggle("hidden", !hasSelection);
+    deleteButton.textContent = `選択した${state.selected.size}件を削除`;
+    wgetButton.textContent = `選択した${state.selected.size}件のwgetを生成`;
   }
 
   async function deleteObjectKeys(keys) {
@@ -963,6 +1015,7 @@
     uploadDropArea.addEventListener("dragleave", () => uploadDropArea.classList.remove("dragging"));
     uploadDropArea.addEventListener("drop", (event) => { event.preventDefault(); uploadDropArea.classList.remove("dragging"); addCandidateFiles(event.dataTransfer.files); });
     $("#load-more").addEventListener("click", () => loadObjects(true));
+    $("#wget-selected").addEventListener("click", showBatchDownloadInfo);
     $("#delete-selected").addEventListener("click", deleteSelected);
     $("#download-object").addEventListener("click", downloadObject);
     $("#move-object").addEventListener("click", openMoveDialog);

@@ -163,6 +163,8 @@ label small { display: block; margin-top: 5px; color: var(--muted); font-weight:
 .command-row { margin-top: 5px; padding: 10px; display: flex; align-items: flex-start; gap: 10px; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
 .command-row code { min-width: 0; flex: 1; overflow-wrap: anywhere; white-space: pre-wrap; line-height: 1.55; }
 .command-row button { flex: 0 0 auto; }
+.batch-command-row { max-height: min(52vh, 480px); overflow: auto; }
+.batch-command-row code { overflow-wrap: normal; word-break: normal; }
 
 .upload-modal { width: min(680px, calc(100vw - 48px)); }
 .destination-row { display: flex; align-items: center; gap: 7px; margin-top: 6px; }
